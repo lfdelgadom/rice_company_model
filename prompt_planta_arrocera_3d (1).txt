@@ -1,0 +1,479 @@
+PROMPT PARA GENERAR EL RECORRIDO 3D "COMPLEJO ARROCERO SABANA DORADA"
+=====================================================================
+
+Cómo usar este archivo: copia todo lo que hay debajo de la línea de guiones y pégalo como mensaje en el modelo de IA. Es un encargo largo; si el modelo corta la respuesta, escríbele "continúa exactamente donde quedaste".
+
+---------------------------------------------------------------------
+
+
+1. EL ENCARGO
+
+Construye un recorrido virtual 3D en primera persona de una planta arrocera colombiana completa, llamada "Complejo Arrocero Sabana Dorada", que corra en el navegador. El visitante entra a la planta en un día normal de trabajo y puede caminar entre trabajadores, camiones y máquinas, volar como un dron o dejarse llevar por un recorrido guiado que explica toda la cadena: cultivo, cosecha, recepción y báscula, secado, silos, molino de trilla, empaque, bodega, despacho y punto de venta.
+
+Lo usarán un docente y sus estudiantes para entender cómo funciona la agroindustria del arroz, así que lo que importa es que el proceso se vea ocurrir: los camiones de verdad llegan, se pesan, descargan y regresan al campo; las cosechadoras de verdad van dejando rastrojo; los bultos de verdad avanzan por las bandas. Un mundo bonito pero quieto no sirve.
+
+Forma de entrega:
+- Un solo archivo llamado planta_arrocera_3d.html, autónomo, que se abre con doble clic o desde un servidor estático. Sin paso de compilación, sin npm, sin archivos adicionales.
+- Todo el CSS y el JavaScript van dentro del archivo. El JavaScript va en un único <script type="module">.
+- Three.js versión 0.169.0 cargado con un import map desde https://cdn.jsdelivr.net/npm/three@0.169.0/ ("three" apunta a build/three.module.js y "three/addons/" a examples/jsm/). De los addons se usan GLTFLoader, RGBELoader, Sky y BufferGeometryUtils (mergeGeometries). Ninguna otra librería.
+- Fuente Inter (pesos 400, 500, 600, 700) desde Google Fonts.
+- Toda la interfaz, los letreros y los mensajes en español de Colombia.
+- Entrega el código completo y funcional. No dejes comentarios del tipo "aquí iría el resto", ni funciones vacías, ni secciones resumidas. Si no cabe en una sola respuesta, entrégalo en partes consecutivas siguiendo el orden de la sección 16 y avisa al final de cada parte cuál sigue; las partes deben poder pegarse una tras otra sin retoques.
+
+El archivo final es grande (del orden de 3000 líneas). Es lo esperado.
+
+
+2. CONVENCIONES DEL MUNDO
+
+- Unidades en metros. Y es la altura. El norte es -Z y el sur es +Z; el este es +X.
+- El piso de la planta está en y = 0.
+- La cámara usa rotación en orden YXZ con yaw y pitch; con yaw = 0 se mira hacia -Z.
+- Ambientación: Llanos Orientales de Colombia, piedemonte de la Cordillera Oriental. Sabana plana, calor, cielo parcialmente nublado de media mañana.
+- La hora de la simulación empieza en 07:42 y avanza en tiempo real. El turno es "Turno A · Jornada normal".
+- Marca de la empresa: "Arrocera Sabana Dorada", lema "Del campo llanero a su mesa". Colores corporativos: verde #1f5a3a y amarillo #f2c31b.
+
+
+3. REGLAS TÉCNICAS QUE CONDICIONAN TODO LO DEMÁS
+
+3.1 Mundo procedural con recursos reales opcionales
+Todo el mundo (edificios, máquinas, vehículos, personas, árboles, terreno) se construye por código con primitivas: cajas, cilindros, conos, esferas, cápsulas, planos y extrusiones. No dependas de modelos externos para nada esencial.
+
+Los recursos descargados solo mejoran el aspecto y cada uno tiene un respaldo generado por código, de modo que el mundo se arma completo aunque no haya internet. El patrón es: crear primero la textura de respaldo en un canvas, usarla de inmediato, pedir la real en segundo plano y, si llega, cambiarle la imagen a la textura ya asignada. Si falla o tarda más de 30 segundos, se queda el respaldo sin mostrar error.
+
+Recursos reales que se intentan cargar:
+- Texturas PBR de Poly Haven a 1k (color, normal GL y rugosidad) con la forma https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/NOMBRE/NOMBRE_diff_1k.jpg (y _nor_gl_1k, _rough_1k). Nombres: concrete_floor_02, concrete_wall_008, asphalt_02, gravel_road, brown_mud_02, dry_ground_01, corrugated_iron_02, metal_plate, rusty_metal_02, beige_wall_001, red_brick_03, rough_wood, bark_brown_02, palm_tree_bark.
+- Cielo HDRI de Poly Haven (2k en escritorio, 1k en móvil): kloofendal_48d_partly_cloudy_puresky y, si falla, farm_field_puresky, en https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/2k/NOMBRE_2k.hdr.
+- De los ejemplos de three.js: textures/terrain/grasslight-big.jpg, textures/waternormals.jpg y los modelos models/gltf/Stork.glb, Parrot.glb y Horse.glb. Prueba tres orígenes en orden y quédate con el primero que responda: https://threejs.org/examples/, https://cdn.jsdelivr.net/gh/mrdoob/three.js@r169/examples/ y https://raw.githubusercontent.com/mrdoob/three.js/r169/examples/.
+
+Lleva la cuenta de cuántos recursos se pidieron, cuántos terminaron y cuántos cargaron bien, para alimentar la barra de progreso.
+
+3.2 Azar repetible
+Usa un generador de números aleatorios con semilla fija (20261006) para que el mundo salga idéntico cada vez. Implementa tu propio ruido: hash entero, ruido de valor 2D con interpolación suave y opción de periodo (para texturas que repiten sin costura) y fBm de varias octavas.
+
+3.3 Rendimiento
+La escena es enorme y debe moverse con fluidez en un portátil. Para lograrlo:
+- Geometría estática fusionada. Todo lo que no se mueve se acumula en un "lote" y al final se funde en pocas mallas: una por material y por celda de 380 m del mapa (para que el recorte por cámara siga sirviendo), en grupos de máximo 400 piezas. A cada pieza se le recalculan las UV por proyección de caja en espacio de mundo dividida por un tamaño de baldosa propio del material, para que las texturas tengan escala real continua entre piezas.
+- Mallas instanciadas (InstancedMesh) para todo lo repetido: pallets, árboles, palmas, pasto y arroz, ganado, bultos en las bandas y las personas.
+- Colisiones en 2D, sin motor de física: listas de rectángulos alineados a los ejes y de círculos, indexadas en una rejilla de 10 m. El jugador es un círculo de 0,35 m que se empuja hacia afuera de lo que toque (dos iteraciones por cuadro).
+- Una sola luz con sombras. La cámara de sombras del sol sigue al espectador (centrada un poco por delante de donde mira) y su posición se ajusta a múltiplos del tamaño de un téxel para que las sombras no titilen al moverse.
+- Oclusión ambiental falsa: una malla de franjas negras con transparencia en degradé pegada al piso alrededor de la huella de cada edificio, silo y objeto grande (se deduce de las cajas y círculos de colisión).
+- Los materiales transparentes no proyectan sombra.
+
+3.4 Tres niveles de calidad
+Seleccionables en la pantalla de inicio y con un botón durante el recorrido:
+- Alta: pixel ratio hasta 2, mapa de sombras 4096, radio de sombra 150 m, pasto en 3 celdas a la redonda con separación 0,60 m, 100 % de los árboles.
+- Media (por defecto en escritorio): pixel ratio hasta 1,25, sombras 2048, radio 115 m, pasto 2 celdas con separación 0,72 m, 80 % de los árboles.
+- Baja (por defecto en móvil): pixel ratio hasta 0,9, sombras 1024, radio 80 m, pasto 1 celda con separación 0,95 m, 45 % de los árboles.
+Cambiar de calidad en caliente debe reconstruir el pasto y el mapa de sombras sin recargar la página. Detecta móvil por agente de usuario o por pantalla táctil pequeña.
+
+
+4. RENDER, LUZ Y ATMÓSFERA
+
+- WebGLRenderer con antialias, salida sRGB, tone mapping ACES Filmic con exposición 0,92, sombras PCF suaves.
+- Cámara en perspectiva con campo de visión 68°, plano cercano 0,25 y lejano 12000.
+- Sol: luz direccional color #fff0dc, intensidad 3,1, dirección inicial (0,62; 0,70; 0,26). Luz hemisférica cielo #d6e6ff / suelo #6b6440 con intensidad 0,32.
+- Niebla exponencial muy tenue (densidad 0,00021, color azul grisáceo #b7c7d6) que da profundidad atmosférica sin tapar el fondo.
+- Cielo de respaldo: el objeto Sky de three.js (turbidez 2,2, rayleigh 1,05) atenuado, y un mapa de entorno generado a partir de él para los reflejos.
+- Cuando carga el HDRI: se usa como fondo y como entorno, se retira el cielo de respaldo y se analiza la imagen para (a) encontrar el píxel más brillante del hemisferio superior y alinear con él la dirección del sol, de modo que las sombras coincidan con el sol que se ve; (b) calcular una intensidad de fondo y de entorno que deje la exposición media del cielo constante; (c) tomar el color medio de la franja del horizonte, ya con tone mapping, como color de la niebla.
+- Encima del canvas, una viñeta sutil hecha con un degradé radial en CSS.
+
+
+5. MATERIALES Y TEXTURAS
+
+5.1 Texturas de respaldo generadas
+Para cada tipo genera en un canvas de 256 px, repetible sin costura, tres mapas: color, normal (derivado de una altura) y rugosidad. Tipos: concreto (con junta de losa), asfalto (con gravilla clara), grava, barro húmedo, barro seco agrietado, pasto, lámina ondulada (10 ondas por baldosa), metal liso con rayones, óxido, pañete, ladrillo a soga con mortero, tablas de madera, corteza y lámina perforada.
+
+5.2 Materiales
+Todos PBR estándar. Familias:
+- Pisos: patio de concreto claro, losa interior, piso epóxico verde grisáceo para las naves, asfalto, grava, barro, barro seco.
+- Fachadas de lámina ondulada en blanco, crema, verde (#3c7650), azul (#2f5f93) y gris; cubiertas en zinc natural, rojo teja y verde.
+- Silo: lámina galvanizada muy metálica y brillante con la ondulación girada 90° para que los anillos queden horizontales.
+- Metales pintados para maquinaria: amarillo de seguridad (#e2ad1f), verde, azul, naranja, rojo, blanco, gris; acero, acero oscuro, galvanizado, óxido.
+- Pañete beige y blanco, ladrillo, madera, corteza.
+- Vidrio translúcido, vidrio oscuro reflectivo, policarbonato lechoso levemente emisivo (para las franjas de luz de las naves), caucho, negro.
+- Emisivos: lámparas, pilotos LED rojo y verde, pantallas azules de tableros.
+- Pintura de vehículos con capa de barniz (clearcoat), cromo, llanta, rin, vidrio de vehículo, faros, luces traseras y ámbar.
+- Grano: una textura moteada dorada que sirve para el arroz paddy en los camiones, para la cascarilla (más parda) y para el arroz blanco.
+
+5.3 Envejecimiento
+Inyecta en el shader de los materiales grandes una variación en espacio de mundo: dos octavas de ruido que oscurecen y aclaran por zonas amplias para romper la repetición de la textura; en muros y silos, además, una franja de mugre que oscurece los primeros 1 a 2,6 m desde el piso y chorreaduras verticales irregulares. Que funcione igual en mallas normales e instanciadas.
+
+5.4 Agua
+Material casi especular con mapa de normales animado (se desplaza lentamente cada cuadro), transparente, sin escribir profundidad. Tres tonos: río (verde pardo, casi opaco), agua de los lotes inundados (más clara, 78 % de opacidad) y canales.
+
+5.5 Texturas dibujadas en canvas
+- Saco de arroz: fondo crema con degradé, franja verde, "ARROZ" en amarillo, "SABANA DORADA" en blanco y "50 kg" en rojo. Una versión individual y otra en mosaico de 4x5 para la carga de los pallets.
+- Marca para los costados de los furgones: fondo claro, "ARROZ SABANA DORADA" en verde, franja verde con el lema en blanco y filete amarillo.
+- Letreros: función general que recibe una o varias líneas de texto, color de fondo y de letra, borde y subtítulo opcionales, ajusta el tamaño de la letra al ancho y devuelve un plano levemente emisivo para que se lea en sombra.
+- Con transparencia por recorte: celosía en X (para torres y galerías), malla eslabonada (cercas) y rejilla de piso (plataformas y escaleras).
+- Demarcación vial (bordes blancos y eje amarillo discontinuo), sendero peatonal verde con bordes blancos y flechas, y cebra.
+- Cancha de fútbol, panel solar, hojas de palma, follaje, banderas y la talanquera a franjas rojas y blancas.
+
+
+6. MAPA GENERAL
+
+De norte a sur:
+- Al norte, los cultivos de arroz: un gran rectángulo de x = -900 a 900 y z = -1250 a -300.
+- En z = -292, la vía de cosecha, de grava, de 7 m de ancho, que corre de oeste a este al borde de los cultivos.
+- En el centro, el predio cercado de la planta: x de -250 a 292, z de -182 a 222.
+- Al sur, en z = 420, la vía nacional: asfalto, 9,5 m de ancho, recta, de 12 km de largo para que nunca se le vea el final.
+- Al oeste, un río ancho que serpentea de norte a sur. Su eje es x = -1010 + 38·sen(0,0042·z) + 16·sen(0,011·z + 1,3). Cinta de agua de 74 m.
+- Mucho más al oeste, el piedemonte andino: una cadena de montañas de 500 a 2000 m de alto entre x = -5900 y -9800, coloreada por vértice de verde oscuro a azulado.
+
+Terreno: una malla de 4800 x 4800 m con 380 divisiones, centrada en (0, -300). Ondulación suave de sabana (hasta unos 15 m) que se anula progresivamente al acercarse a las zonas que deben ser planas: el predio de la planta con su entorno, los cultivos, la franja de la vía nacional, la vía de acceso sur y el patio de maquinaria. Cerca del río el terreno baja hasta -3,4 m para formar el cauce. Color por vértice que mezcla manchas secas, zonas más verdes y orillas húmedas; la textura de pasto se muestrea a dos escalas para que no se note el mosaico. Más allá, un anillo plano de pasto hasta 40 km.
+
+Vías asfaltadas con demarcación:
+- Acceso oeste de camiones de paddy: sale de la vía de cosecha en x = -300, baja hacia el sur y gira al este para entrar por la portería oeste en z = -100, hasta x = -118. Ancho 9 m.
+- Glorieta de retorno en (-100, -100): isleta de 8,4 m de radio con pasto, rodeada por un lazo de calzada de 8 m.
+- Anillo interno de la planta: z = -168 (lado norte), x = 272 (lado este), z = 128 (lado sur) y x = -232 (lado oeste), de 8 a 9 m de ancho.
+- Acceso sur: recta en x = 150 desde el anillo hasta la vía nacional.
+- Vía y parqueadero del punto de venta al sur del predio.
+
+Senderos peatonales pintados de verde, de 1,6 m, con cebras donde cruzan las vías: uno de la administración al molino, uno por el costado oeste y uno hacia la bodega.
+
+Cerca perimetral de malla eslabonada de 2,3 m con postes cada 3 m y tubo superior, con dos aberturas para vehículos: la portería oeste (en x = -250, entre z = -114 y -86) y la portería sur (en z = 222, entre x = 134 y 166). La cerca colisiona.
+
+Postes de alumbrado de 10 m cada 30 m a lo largo del anillo y de los accesos. Sobre la vía nacional, una línea eléctrica con postes de concreto cada 60 m y tres cables con catenaria.
+
+
+7. LA PLANTA, ZONA POR ZONA
+
+Cada zona tiene un rectángulo en planta, un nombre y una descripción que se muestran en la interfaz, y un punto de llegada para el teletransporte. Los nombres y descripciones exactos están en la sección 12.
+
+Usa tres piezas reutilizables:
+- Nave industrial: zócalo de concreto de 1,3 m, cerramiento en lámina, portones con marco amarillo y caja de cortina enrollable, franja alta de ventanas de policarbonato, cubierta a dos aguas con alero, cumbrera y lucernarios, cielorraso claro, piso epóxico, y por dentro pórticos cada 7,5 m con columnas azules, cerchas de acero y luminarias. Los muros colisionan salvo en los vanos de las puertas, así que se puede entrar caminando.
+- Bloque: edificio pequeño macizo con losa de cubierta, ventanas oscuras, puerta, parapeto y aire acondicionado opcionales.
+- Elementos de planta: barandas amarillas, plataformas de rejilla, escaleras de gato con jaula, escaleras de peldaños, galerías cubiertas de transportador con laterales en celosía, torres en celosía, elevadores de cangilones, ciclones, tolvas elevadas sobre patas, motores, postes, bolardos.
+
+7.1 Portería oeste y báscula (x -350 a -200, z -182 a -36)
+- Dos carriles: entrada en z = -95 (hacia el este) y salida en z = -105 (hacia el oeste).
+- Pórtico de entrada sobre x = -252 con cubierta y viga verde, y el letrero "BIENVENIDO · COMPLEJO ARROCERO SABANA DORADA".
+- Caseta de portería con el letrero "PORTERÍA". Talanqueras en ambos carriles.
+- Dos básculas camioneras de 18 x 3,2 m centradas en x = -216, una por carril, con bordillos amarillos. Caseta de báscula entre los carriles con el letrero "BÁSCULA CAMIONERA · 80 t".
+- Un semáforo por báscula, con luz roja y verde.
+- Afuera de la cerca, patio de espera en grava con cuatro volquetas y una tractomula estacionadas.
+
+7.2 Recepción y muestreo (x -200 a -116, z -125 a -76)
+- Torre de muestreo en x = -191: columna amarilla con brazo horizontal del que cuelga el calador neumático (una sonda que baja sobre la carga del camión), cabina del operario sobre plataforma a 4,2 m con escalera.
+- Caseta "ANÁLISIS DE MUESTRAS".
+- Cobertizo de descargue: cubierta de 36 x 32 m a 9 m sobre seis columnas azules, con muro de fondo azul y el letrero "RECEPCIÓN DE ARROZ PADDY VERDE". En el piso, una tolva de recibo con rejilla en cada carril, en x = -152.
+- Colector de polvo con ciclón, y un elevador de cangilones verde de 30 m del que sale una galería inclinada hacia la prelimpieza.
+
+7.3 Prelimpieza y secado (x -82 a -24, z -160 a -112)
+- Edificio de prelimpieza de 10 x 10 x 15 m con plataforma en la cubierta y el letrero "PRELIMPIEZA".
+- Tres secadoras de torre en x = -56, -44 y -32: base de acero, cuerpo de lámina perforada de 17 m con anillos galvanizados, cabezal y remate piramidal a 25 m, escalera de gato, plataforma intermedia y ducto de aire caliente oxidado por detrás. Letrero "SECADORAS DE TORRE".
+- Horno de cascarilla en ladrillo con chimenea de ladrillo de 18 m, tolva de alimentación y el letrero "HORNO DE CASCARILLA". La chimenea echa humo gris y las secadoras sueltan vapor tenue.
+
+7.4 Almacenamiento en silos (x -24 a 84, z -160 a -116)
+- Torre principal de elevadores en (-12, -128): estructura en celosía amarilla de 6 x 6 m y 44 m de alto, con plataformas cada 6 m, caseta en la cima y cuatro elevadores de cangilones de 46 m adosados.
+- Diez silos metálicos de fondo plano en dos filas de cinco: x = 6, 23, 40, 57, 74; z = -146 y -129. Cada uno de 7,5 m de radio y 21 m de cuerpo, sobre anillo de concreto, con techo cónico, respiradero, 14 montantes verticales, dos ventiladores de aireación en la base, escalera de gato y un letrero "SILO 1" a "SILO 10".
+- Una galería transportadora sobre cada fila a 29,5 m, ductos de caída desde la torre a cada silo y a las secadoras.
+- Cuatro tolvas pulmón junto al molino y galerías que bajan desde la torre hasta ellas y de ahí a la nave del molino.
+
+7.5 Molino de trilla (nave de x 10 a 92, z -88 a -38; 14 m de altura libre)
+Fachada crema, cubierta verde. Portón principal al sur en x = 30 (6 x 5,5 m), puerta peatonal y portones laterales. Letreros "MOLINO DE TRILLA" y "USO OBLIGATORIO DE CASCO, GAFAS, TAPAOÍDOS Y BOTAS". En la cubierta, extractores eólicos que giran.
+Interior completo y recorrible, con el grano bajando por gravedad de norte a sur:
+- Entrepiso de rejilla a 5,2 m a lo largo del muro norte, con columnas y baranda amarillas y escalera de acceso.
+- Seis elevadores de cangilones verdes y azules contra el muro norte.
+- Cuatro descascaradoras de rodillos sobre el entrepiso, con motor y ductos.
+- Dos mesas separadoras de paddy cuya cubierta vibra de lado a lado.
+- Seis pulidoras verticales blancas con cono superior y motor.
+- Tres clasificadores de cilindro (trieur) con tambor perforado que gira.
+- Cuatro seleccionadoras ópticas por color: gabinetes blancos con pantalla y un LED verde que parpadea.
+- Dos zarandas planas (plansifter) suspendidas en un bastidor, con movimiento giratorio.
+- Cuarto de control vidriado con consola y tres pantallas, y dos operarios sentados.
+- Filas de tableros eléctricos (CCM) contra el muro oeste.
+- Líneas amarillas de seguridad en el piso y pallets de subproductos.
+Cada máquina tiene su caja de colisión y un puesto de trabajo con un operario en la pose que corresponde.
+Entre el molino y el empaque, una cubierta de conexión y una galería.
+
+7.6 Cascarilla y caldera (x 96 a 196, z -178 a -106)
+- Ducto neumático que saca la cascarilla del molino hasta una tolva elevada con ciclón.
+- Casa de caldera (nave gris de 24 x 22 m) con el cuerpo rojo de la caldera adentro y el letrero "CALDERA".
+- Chimenea de concreto de 34 m con franjas roja y blanca, que suelta vapor blanco.
+- Patio de cascarilla: un montículo grande de cascarilla de 10 m de radio y otro menor de ceniza. Un cargador frontal trabaja ahí.
+- Puente de tuberías de vapor y aire entre la caldera y el molino.
+
+7.7 Empaque y bodega de producto terminado (una sola nave de x 104 a 236, z -68 a 100; 12 m)
+Fachada blanca. Letreros "EMPAQUE Y BODEGA DE PRODUCTO TERMINADO" y, sobre el costado este, "DESPACHO". Fila central de columnas en x = 170.
+Empaque (z de -68 a -8):
+- Tres tolvas de producto terminado con ensacadora de 50 kg y un operario ensacando en cada una.
+- Bandas transportadoras desde cada ensacadora que se unen en una banda colectora hasta el robot; por ellas avanzan bultos.
+- Robot paletizador naranja de brazo articulado: gira entre el final de la banda y el pallet, lleva un bulto en la pinza durante la mitad del ciclo (5,2 s por ciclo) y la pila crece de a cuatro bultos hasta diez capas y vuelve a empezar.
+- Envolvedora de pallets con un cilindro de película translúcida que gira.
+- Tres líneas de empaque de libra (empacadoras verticales con pantalla), cada una con su banda de paquetes pequeños, mesa de enfardado y operarios.
+Bodega (z de -8 a 100):
+- Estantería selectiva de pallets: cinco pasillos de doble fila, de 6,3 m de alto, con parales azules, largueros naranja y cuatro niveles, llena en un 84 % con pallets de bultos.
+- Arrume en piso junto a los muelles.
+- Oficina de despacho con el letrero "OFICINA DE DESPACHO" y un aviso "VELOCIDAD MÁXIMA MONTACARGAS 8 km/h".
+Despacho (costado este):
+- Seis muelles de carga en z = 6, 22, 38, 54, 70 y 86, cada uno con su portón, abrigo de muelle negro, topes amarillos, lámpara y carriles demarcados en el patio.
+Cubierta: paneles solares en la mitad sur de la nave.
+
+7.8 Bodega de subproductos (nave verde de x -16 a 44, z 18 a 56)
+Letrero "BODEGA DE SUBPRODUCTOS · SALVADO · GRANZA · ARROCILLO". Adentro, filas de pallets apilados. Afuera, big-bags y arrumes de sacos.
+
+7.9 Administración y laboratorio (x -170 a 40, z 130 a 222)
+- Edificio de oficinas de tres pisos (x -86 a -38, z 148 a 166) con franjas corridas de vidrio, antepechos blancos, marquesina de acceso y el letrero grande "ARROCERA SABANA DORADA" en la cornisa. Equipos de aire en la cubierta.
+- Tres astas con banderas que ondean: la de Colombia, una verde con "SABANA DORADA" en amarillo y una verde con cruz blanca de seguridad.
+- "LABORATORIO DE CALIDAD" en ladrillo.
+- "CASINO" (comedor) con terraza cubierta de teja roja y ocho mesas con bancas donde hay gente sentada.
+- "VESTIERES".
+- Parqueadero de carros demarcado, cobertizo de motos y parqueadero de bicicletas con 16 bicicletas.
+- Tanque elevado de agua de 25 m sobre cuatro patas.
+- Subestación eléctrica cercada con tres transformadores y el aviso "PELIGRO · ALTA TENSIÓN".
+- Cancha de fútbol de 42 x 26 m con arcos y el letrero "CANCHA · BIENESTAR LABORAL".
+- Árboles de sombra, palmas ornamentales, bancas.
+
+7.10 Taller y combustible (x 170 a 260, z 130 a 175)
+Nave azul "TALLER DE MANTENIMIENTO" con un tractor en reparación, gabinetes de herramienta y bancos. Estación de combustible con cubierta blanca, dos surtidores rojos, tanque horizontal y el letrero "ACPM". Canecas, repuestos oxidados y tres contenedores marítimos de colores.
+
+7.11 Portería sur
+Pórtico verde sobre el acceso en z = 222 con el letrero "ARROCERA SABANA DORADA · DESPACHO Y VISITANTES", caseta de vigilancia y dos talanqueras.
+
+7.12 Punto de venta (fuera de la cerca, x 30 a 160, z 228 a 310)
+Local de ladrillo con vitrina corrida de vidrio, marquesina verde y el letrero "PUNTO DE VENTA · ARROZ SABANA DORADA". Pallets de producto exhibidos al frente, parqueadero con carros y clientes entrando y saliendo. Junto a la vía nacional, una valla de 16 x 6 m: "ARROCERA SABANA DORADA", "Del campo llanero a su mesa" y, en pequeño, "Planta de procesamiento · Punto de venta a 200 m".
+
+7.13 Planta de tratamiento, PTAR (x -360 a -270, z 130 a 215)
+Tres piscinas de concreto con agua y una caseta.
+
+7.14 Patio de maquinaria agrícola (x -520 a -390, z -280 a -170)
+Cobertizo largo de teja roja sobre columnas azules, piso de grava, tres tractores, una cosechadora y un tractor con tolva estacionados, y una "OFICINA DE CAMPO".
+
+7.15 Estación de bombeo
+Caseta de ladrillo a la orilla del río, a la altura de z = -620, con tubería azul de succión hacia el río y de descarga hacia un canal que lleva el agua a los cultivos.
+
+7.16 Señalización y objetos cotidianos repartidos por toda la planta
+Puntos ecológicos de tres canecas (verde, blanca, negra), extintores en su soporte, avisos de pie ("PUNTO DE ENCUENTRO", "ZONA DE CARGUE", "PROHIBIDO FUMAR", "USO DE EPP", "VELOCIDAD MÁX 10 km/h", "CONDUCTOR: APAGUE MOTOR EN BÁSCULA"), tanques de agua negros sobre las cubiertas pequeñas, cajas eléctricas, bandejas portacables, bolardos amarillos frente a básculas y muelles.
+
+
+8. LOS CULTIVOS DE ARROZ
+
+- Lotes rectangulares de 118 m (este-oeste) por 84 m (norte-sur) en cuadrícula. Las columnas se arman desde x = -900 hacia el este y las filas desde z = -301 hacia el norte, hasta llenar el rectángulo de cultivos.
+- Entre lotes, un dique de tierra con pasto de 3 m. Cada tercera separación es más ancha (12 m) y lleva un camino de grava de 6 m y un canal de riego con sus dos diques menores.
+- Canal principal de riego a lo largo del borde sur de los cultivos, con una compuerta de concreto y lámina frente a cada columna de lotes.
+- Cuatro estados, repartidos con ruido suave para que formen manchas creíbles y no un tablero de ajedrez: plántula recién trasplantada sobre lámina de agua, verde en macollamiento con agua entre las plantas (el más abundante), dorado listo para cosecha sobre suelo seco y barbecho con rastrojo (el más escaso).
+- En la primera fila, la más cercana a la planta, quedan fijos dos lotes dorados contiguos en cosecha (el más cercano a x = -120 y el siguiente al este), un lote en barbecho al oeste de ellos y uno verde al este.
+
+Vegetación cercana instanciada: el mundo se divide en celdas de 24 m y solo existen las que rodean a la cámara; se crean máximo dos por cuadro y se reciclan las que quedan lejos. Cada celda es una malla instanciada de macollas (siete hojas curvas con degradé de oscuro en la base a claro en la punta). Según dónde caiga cada macolla:
+- En lote verde: alta, verde intenso. En lote dorado: un poco más alta, dorada. En plántula: pequeña y rala. En barbecho: rastrojo corto y pajizo.
+- Fuera de los lotes: pasto de sabana, más bajo, que varía de verde a seco; no crece sobre pavimento, vías, agua ni patios.
+Las macollas se mecen con el viento en el vertex shader y se encogen hasta desaparecer cerca del borde del radio visible, para que no se note el corte. Cuando la cámara vuela alto se retira todo el pasto.
+
+Vista lejana: cada lote verde, dorado o de plántula lleva además un plano con textura de surcos a la altura del cultivo, que se disuelve con tramado (dither) justo donde empiezan las macollas reales; así desde el dron los lotes se ven llenos y de cerca se ven las plantas.
+
+Cosecha visible: cada lote en cosecha guarda una cuadrícula de 1 m que marca lo ya cortado. Donde pasa el cabezal de la cosechadora, las macollas doradas se convierten al instante en rastrojo bajo. Al terminar el lote, la cosechadora vuelve al inicio, el lote se restablece y empieza de nuevo.
+
+
+9. PAISAJE Y FAUNA
+
+- Bosque de galería: franja densa de árboles y palmas de moriche a ambos lados del río.
+- Árboles dispersos y unas 70 "matas de monte" (bosquecitos de 18 a 60 m de radio) por la sabana, colocados con ruido para que haya claros.
+- Barreras de árboles a lo largo de la vía nacional y doble hilera de palmas en el acceso sur.
+- Árboles de sombra y palmas ornamentales dentro de la planta.
+- Ningún árbol nace dentro de los cultivos, sobre vías, en el río ni en los patios. Los troncos colisionan.
+- Palma: tronco delgado levemente inclinado y corona de 13 hojas arqueadas con textura recortada. Árbol frondoso: tronco con tres ramas y copa hecha de nueve icosaedros fundidos, con normales suavizadas hacia afuera para que se ilumine como un volumen, en tres variantes y con tono de verde distinto por ejemplar.
+- Unas 70 reses cebú blancas y crema pastando en grupos en los potreros al este, hechas con primitivas (cuerpo, giba, cabeza, patas, cola).
+- Si cargan los modelos animados: 14 garzas que vuelan en círculos sobre el lote en cosecha y van siguiendo a la cosechadora, una bandada de 8 loros que cruza alto cerca del río, y 3 caballos que galopan en círculo en un potrero. Si no cargan, simplemente no aparecen.
+
+
+10. VEHÍCULOS Y CIRCULACIÓN
+
+10.1 Modelos (todos con primitivas, con ruedas que giran según la velocidad y un conductor visible)
+- Volqueta de trompa (cabina convencional tipo americano, común en Colombia): capó, parrilla y bómper cromados, exostos verticales, luces ámbar en el techo, tres ejes con doble llanta atrás y un volco con costillas que bascula sobre un pivote trasero, con su carga de paddy a ras y un copete.
+- Camión furgón: la misma cabina, furgón blanco con la marca en los costados y dos puertas traseras que abren.
+- Tractomula con remolque granelero articulado cargado de paddy.
+- Camioneta doble cabina (con y sin logo), automóvil, camioneta SUV y moto con motociclista.
+- Cosechadora combinada de orugas de caucho: cuerpo rojo o verde, tanque de grano, cabina vidriada, cabezal de 6 m con dedos y molinete amarillo que gira, y tubo de descarga.
+- Tractor con cabina y llantas traseras grandes, con o sin tolva granelera remolcada.
+- Montacargas amarillo con mástil, horquillas que suben y bajan, techo protector, baliza ámbar y un pallet de bultos.
+- Cargador frontal amarillo con brazo y balde.
+- Dron fumigador de seis rotores con tanque y barra de boquillas.
+
+10.2 Sistema de rutas
+Cada vehículo recorre una lista de tramos. Un tramo es una polilínea suavizada con curva Catmull-Rom, con velocidad propia, opción de recorrerlo en reversa, un tiempo de parada al final y funciones que se ejecutan al detenerse, durante la espera (con el avance de 0 a 1) y al arrancar. Comportamiento:
+- Acelera y frena con suavidad, y calcula la frenada para detenerse justo al final del tramo.
+- Mira hacia adelante: si hay otro vehículo, un remolque o el jugador a pie en su carril, reduce y guarda distancia. Por eso se forman colas reales en la báscula.
+- Si queda bloqueado más de 14 segundos, ignora los obstáculos durante 4 segundos para destrabarse.
+- El remolque sigue al tractor con cinemática simple: el eje trasero es arrastrado hacia el enganche.
+- Los vehículos en movimiento también empujan al jugador (varios círculos de colisión a lo largo de cada uno).
+
+10.3 Lo que debe verse pasar
+- Ciclo del paddy, con siete volquetas de distintos colores repartidas a lo largo del circuito: esperan junto al lote en cosecha (26 s, y ahí reaparece la carga) → van por la vía de cosecha hacia el oeste a 9 m/s levantando polvo → bajan por el acceso y entran por el carril de entrada → se detienen 7 s en la báscula de entrada (semáforo en rojo mientras se pesa) → avanzan al calador (9 s; la sonda baja y sube sobre la carga) → se ubican sobre la tolva de recibo (16 s; el volco se levanta hasta unos 45°, sale polvo, la carga desaparece y el volco baja) → dan la vuelta por la glorieta → báscula de salida (6 s) → regresan vacías al campo y dan la vuelta.
+- Despacho, con cuatro furgones: llegan por la vía nacional, suben por el acceso sur, entran al patio de muelles, retroceden despacio hasta su muelle, abren las puertas, permanecen 50 s mientras los cargan, cierran y salen de nuevo a la vía nacional. Otros dos furgones están atracados de forma permanente.
+- Tránsito en la vía nacional: 18 vehículos mezclados (carros, SUV, camionetas, motos, furgones) a 16 m/s, la mitad en cada sentido.
+- Dos camionetas de supervisión dando vueltas al anillo interno.
+- Cinco montacargas en la bodega: dos llevan pallets desde el paletizador hasta la estantería, uno mueve pallets entre pasillos, y dos van y vienen entre el arrume y los muelles. Al llegar levantan las horquillas hasta el nivel donde entregan. El pallet desaparece al entregar y reaparece al recoger.
+- Cargador frontal yendo y viniendo entre el montículo de cascarilla y la tolva de la caldera, subiendo y bajando el balde, con polvo.
+- Dos cosechadoras, una en cada lote dorado, que barren el lote en franjas de ida y vuelta de 5,6 m a 1,6 m/s, con el molinete girando y polvo de paja detrás. Al iniciar la simulación ya llevan cortada una parte. Junto a cada una, un tractor con tolva que la acompaña por el lado ya cosechado.
+- Un dron fumigador que recorre un lote verde en pasadas paralelas a 3 m de altura soltando neblina.
+- Talanqueras que suben solas cuando se acerca un vehículo y bajan cuando se aleja.
+- Vehículos estacionados (fundidos con la geometría estática y con colisión): carros en el parqueadero de administración y del punto de venta, motos en su cobertizo, camiones en el patio de espera, maquinaria en su patio, una volqueta esperando junto al lote.
+
+
+11. PERSONAS
+
+Hasta 260 figuras humanas, sin modelos externos y sin esqueleto real: cada persona son piezas rígidas (pelvis, torso, chaleco, cabeza con cuello y nariz, pelo, casco con ala y nervio, brazo, antebrazo, mano, muslo, pierna, bota) y cada tipo de pieza es una sola malla instanciada compartida por todos. En cada cuadro se calcula a mano la cadena de articulaciones (raíz, pelvis, torso, cuello, hombros, codos, muñecas, caderas, rodillas, tobillos) a partir de unos pocos ángulos de pose y se escribe la matriz de cada pieza. Estatura de adulto, con variación de 92 a 103 %.
+
+Apariencia variada por instancia: seis tonos de piel, cuatro de pelo, pantalón (jean, oscuro, caqui, blanco, gris), camisa (azul de dotación, gris, blanca, verde, naranja, roja, polo azul, beige), casco opcional (amarillo operario, blanco supervisor, azul visitante o vigilante) y chaleco reflectivo opcional (naranja o verde limón).
+
+Poses de puesto fijo, todas con un leve movimiento continuo: de pie inactivo mirando alrededor, conversando con ademanes, operando un tablero, inspeccionando una máquina agachándose, anotando en una planilla, ensacando, paleando, sembrando encorvado dentro del agua, sentado y conduciendo.
+
+Caminata: balanceo de piernas y brazos con flexión de rodilla y un leve rebote, a 1,15–1,45 m/s. Los caminantes siguen rutas de puntos, de ida y vuelta con pausas o en circuito cerrado, giran con suavidad y se detienen si el jugador se les para enfrente.
+
+Objetos en la mano: planilla, pala, bulto al hombro y equipo de fumigar de espalda con lanza.
+
+Dónde va cada quién:
+- Un operario en cada puesto de trabajo del molino y del empaque, en la pose que le corresponde a la máquina.
+- Portería: vigilante de casco azul, operario del calador en su cabina elevada, un auxiliar paleando grano junto a la tolva, un supervisor de ronda y cuatro conductores conversando en el patio de espera.
+- Secado y silos: rondas a pie, un operario en la plataforma de una secadora y otro caminando por la galería superior de los silos a 29,5 m.
+- Molino: rondas en circuito, un supervisor y un operario recorriendo el entrepiso.
+- Bodega y muelles: rondas, un supervisor con planilla y coteros que llevan bultos al hombro desde el arrume hasta el camión y regresan con las manos libres.
+- Cascarilla, caldera, taller y surtidor: operarios en sus tareas.
+- Senderos: trabajadores caminando entre zonas.
+- Administración: personal de oficina sin casco, personal de laboratorio de blanco, y trabajadores sentados en las mesas del casino.
+- Un grupo de visita de seis personas con chaleco: un guía de casco blanco y planilla al frente y cinco visitantes de casco azul, que caminan despacio de la administración al molino.
+- Punto de venta: seis clientes y un empleado cargando bultos.
+- Campo: cuadrillas de siembra en lotes de plántula (botas blancas, sin casco), dos fumigadores a pie por los diques, paleros en el canal, y un supervisor conversando con un agricultor junto al lote en cosecha.
+- Patio de maquinaria y estación de bombeo: un par de operarios.
+
+
+12. ZONAS: NOMBRES Y DESCRIPCIONES EXACTOS
+
+Se muestran en el panel superior izquierdo al entrar a cada zona y en la lista "Ir a zona". Cuando hay zonas superpuestas gana la de menor área.
+
+- Bodega de subproductos — Salvado, granza y arrocillo se empacan y venden para alimento animal y otras industrias.
+- Portería y báscula — Control de ingreso de camiones con arroz paddy verde, pesaje de entrada y salida.
+- Recepción y muestreo — Muestreo con calador, análisis de humedad e impurezas y descargue del paddy en tolvas.
+- Prelimpieza y secado — Limpieza del grano y secadoras de torre con aire caliente de horno de cascarilla.
+- Almacenamiento en silos — 10 silos metálicos de fondo plano con aireación para conservar el paddy seco.
+- Molino de trilla — Descascarado, separación, pulido, clasificación y selección óptica del arroz blanco.
+- Cascarilla y caldera — La cascarilla del molino se usa como combustible: horno, caldera y patio de cascarilla.
+- Empaque — Tolvas de producto terminado, ensacadoras de 50 kg, empacadoras de libra y paletizado.
+- Bodega de producto terminado — Almacenamiento en estantería selectiva y arrume en piso, listo para despacho.
+- Administración y laboratorio — Oficinas, laboratorio de calidad, casino y vestieres del personal.
+- Taller y combustible — Mantenimiento de maquinaria agrícola e industrial y surtidor de ACPM.
+- Punto de venta — Comercialización directa: venta de arroz empacado, subproductos y atención a distribuidores.
+- Planta de tratamiento (PTAR) — Tratamiento de aguas residuales industriales antes del vertimiento.
+- Patio de maquinaria agrícola — Cobertizo de tractores, sembradoras y fumigadoras; abastecimiento de campo.
+- Estación de bombeo — Captación del río para riego por inundación de los lotes de arroz.
+- Cultivo de arroz — Lotes inundados en distintas etapas: plántulas, macollamiento, espigado y cosecha mecanizada.
+
+Fuera de toda zona: "Vía nacional" cerca de la carretera, "Zona de cultivo" al norte (descripción: Lotes de arroz bajo riego por inundación.) y "Sabana llanera" en el resto (descripción: Alrededores del complejo arrocero.).
+
+
+13. JUGADOR, CÁMARAS Y CONTROLES
+
+Tres modos, con las teclas 1, 2 y 3 o con los botones de la barra:
+
+Caminar (1). Ojos a 1,68 m. W A S D o flechas para moverse, mouse para mirar (con captura del puntero al hacer clic en la escena), Shift para correr, Espacio para un salto pequeño. 2,3 m/s caminando y 6,2 m/s corriendo, con cabeceo sutil. Sigue la altura del terreno, choca con muros, máquinas, cercas, árboles y vehículos, y no puede meterse al río. Punto de partida: recién pasada la portería oeste, en (-238, -83), mirando hacia las básculas.
+
+Dron (2). Vuelo libre con inercia: 26 m/s y 90 m/s con Shift; Q baja y E sube. Altura entre 1,8 m sobre el terreno y 900 m. Al pasar de caminar a dron la cámara sube 6 m; al volver a caminar, aterriza donde esté.
+
+Recorrido guiado (3). La cámara viaja sola por una secuencia de 26 planos. En 15 de ellos se detiene 6,5 segundos, con una leve deriva, y muestra un subtítulo con título y explicación; los otros 11 son puntos de paso para que la cámara entre y salga de los edificios por las puertas y no atraviese muros. Los tramos largos o aéreos hacen un arco elevado; los tramos a nivel de piso van a paso de persona. Al terminar queda en modo dron. Paradas, en orden, con sus textos exactos:
+
+1. Complejo Arrocero Sabana Dorada — Del cultivo a la venta: unas 140 hectáreas de arroz bajo riego y una planta de procesamiento integrada en los Llanos Orientales. (Vista aérea general desde el sureste.)
+2. Cultivo y cosecha — Lotes inundados en diferentes etapas. Las cosechadoras de oruga trillan el arroz paddy y los tractores con tolva lo llevan a las volquetas.
+3. Transporte del campo a la planta — Volquetas y tractomulas trasladan el paddy verde por la vía de cosecha hasta la portería de recepción.
+4. Portería y báscula — Cada camión se pesa al entrar y al salir; la diferencia es el peso neto de arroz recibido.
+5. Muestreo y descargue — El calador neumático toma muestras para medir humedad e impurezas; luego el volco descarga en las tolvas de recibo.
+6. Prelimpieza y secado — El paddy se limpia y entra a secadoras de torre con aire caliente del horno de cascarilla, hasta llegar a 12–13 % de humedad.
+7. Silos de almacenamiento — Diez silos metálicos con aireación conservan el grano seco hasta su proceso en el molino.
+8. Entrada al molino — El molino de trilla transforma el paddy seco en arroz blanco: entra por elevadores y recorre las máquinas por gravedad.
+9. Descascarado y pulido — Descascaradoras de rodillos, mesas separadoras, pulidoras, clasificadores de cilindro y seleccionadoras ópticas por color. (Dentro del molino.)
+10. Empaque — Tolvas de producto terminado alimentan ensacadoras de 50 kg y empacadoras de libra; un robot paletiza los bultos.
+11. Bodega de producto terminado — Estantería selectiva y montacargas organizan el inventario listo para despacho.
+12. Despacho — Camiones furgón se ubican en los muelles; coteros y montacargas cargan los bultos hacia distribuidores.
+13. Administración y laboratorio — Oficinas, laboratorio de calidad, casino y vestieres del personal de la planta.
+14. Comercialización — Punto de venta sobre la vía nacional: arroz empacado y subproductos para hogares, tiendas y distribuidores.
+15. Ciclo completo — Cultivo, cosecha, recepción, secado, almacenamiento, trilla, empaque, bodega, despacho y venta en un solo complejo. (Vista aérea final desde el suroeste.)
+
+Otras teclas: M abre o cierra la lista "Ir a zona"; N activa o silencia el sonido; H oculta o muestra la ayuda; F muestra un contador de cuadros por segundo, llamadas de dibujo y triángulos.
+
+Teletransporte: desde la lista de zonas o haciendo clic en el minimapa. Caminando, llega al piso; en dron, llega 40 m arriba mirando hacia abajo.
+
+Pantallas táctiles: la mitad izquierda es una palanca virtual de movimiento (aparece un círculo donde se apoya el dedo) y la mitad derecha, arrastrando, mueve la mirada.
+
+
+14. INTERFAZ
+
+Estilo: paneles de vidrio esmerilado oscuro (fondo rgba(16,22,20,.58) con desenfoque de fondo de 14 px, borde blanco al 14 % y esquinas de 14 px), texto claro #f3f5f1, texto secundario al 66 %, acento dorado #e8c45a y verde #8fd18a, fuente Inter. La interfaz no captura clics salvo en sus controles.
+
+Pantalla de inicio (cubre todo, fondo de degradé radial verde muy oscuro, tarjeta centrada de hasta 560 px):
+- Antetítulo en mayúsculas doradas espaciadas: "Recorrido virtual · Agroindustria del arroz".
+- Título en dos líneas: "Complejo Arrocero" / "Sabana Dorada".
+- Párrafo: "Una planta completa en operación: cultivos inundados y cosecha, recepción y báscula, secado, silos, molino de trilla, empaque, bodega, despacho y punto de venta. Camina entre trabajadores, camiones y máquinas en un día normal de trabajo."
+- Tres renglones de teclas: "W A S D — caminar · Shift correr · mouse para mirar"; "1 · 2 · 3 — caminar · dron · recorrido guiado"; "M — ir directo a cualquier zona de la planta".
+- Barra de progreso delgada con degradé de verde a dorado y una línea de estado debajo.
+- Selector de calidad con las opciones "Calidad alta (PC con tarjeta gráfica)", "Calidad media" y "Calidad baja (portátil / celular)".
+- Botón dorado "Entrar a la planta", atenuado e inactivo hasta que el mundo esté listo.
+Al entrar: la pantalla se desvanece en 1 segundo, aparece la interfaz, se captura el puntero y arranca el sonido.
+
+Durante el recorrido:
+- Arriba a la izquierda, panel de zona: etiqueta "Zona", nombre y descripción. Al cambiar de zona hace una pequeña animación de entrada desde la izquierda.
+- Arriba a la derecha, reloj con la hora de la simulación y debajo "Turno A · Jornada normal".
+- Abajo al centro, barra de botones: "Caminar 1", "Dron 2", "Recorrido 3", separador, "Ir a zona M", "Sonido N" y "Calidad" (que al pulsarlo rota entre alta, media y baja y muestra la actual). El modo activo se resalta en dorado.
+- Abajo a la izquierda, ayuda en tres renglones: "W A S D moverse · Mouse mirar · Shift correr" / "1 caminar · 2 dron (Q/E subir/bajar) · 3 recorrido guiado" / "M ir a una zona · N sonido · H ocultar esta ayuda". Se oculta sola a los 16 segundos.
+- Abajo a la derecha, minimapa cuadrado de 236 px con la etiqueta "Plano · clic para ir". Norte arriba, centrado en el espectador. Muestra el río, los lotes coloreados según su estado, los patios, las vías, las huellas de los edificios y silos, los vehículos como puntos (cosechadoras en naranja, montacargas en amarillo, el resto en blanco), las personas como puntitos azul claro y una flecha dorada con la orientación de la cámara. Abarca 420 m al caminar y 900 m en dron o en recorrido. El fondo del mapa se dibuja una sola vez y se reutiliza; el minimapa se refresca unas diez veces por segundo.
+- Encima del minimapa, la lista desplegable "Ir a zona" con nombre y descripción de cada zona.
+- En el centro, una mira pequeña y discreta, solo al caminar con el puntero capturado.
+- Aviso "Haz clic para controlar la vista" cuando el puntero no está capturado.
+- Subtítulo del recorrido guiado, centrado sobre la barra, con título y descripción, que aparece y desaparece con una transición suave.
+
+Pantallas de menos de 760 px: minimapa de 150 px por encima de la barra, se ocultan la ayuda, las descripciones de zona y las letras de las teclas, y la barra de botones se puede deslizar horizontalmente.
+
+
+15. PARTÍCULAS, DETALLES ANIMADOS Y SONIDO
+
+Partículas: un solo sistema de puntos con una reserva circular de 1600, textura de mancha suave, tamaño en perspectiva y que respete la niebla. Cada partícula crece, sube, se frena, se va con el viento y se desvanece. Emisores: humo gris de la chimenea del horno, vapor blanco de la chimenea de la caldera, vapor tenue de las tres secadoras, polvo detrás de las volquetas en la vía de grava, polvo al descargar en la tolva, paja detrás de las cosechadoras, polvo del cargador y neblina del dron. Los emisores lejanos a la cámara no emiten.
+
+Otros detalles con movimiento: banderas que ondean (vertex shader), extractores eólicos en las cubiertas del molino y la bodega, mesas vibratorias, tambores, zarandas y LED del molino, envolvedora, bultos y paquetes en las bandas (instanciados), semáforos de báscula, calador, talanqueras y el agua.
+
+Sonido ambiente, generado por completo con Web Audio, sin archivos:
+- Viento: ruido filtrado, más fuerte al volar alto y más suave bajo techo.
+- Zumbido de planta: ruido grave más tres tonos en diente de sierra (50, 100 y 147 Hz), a todo volumen dentro del molino, medio dentro del empaque y la bodega, y decreciente con la distancia afuera.
+- Motor del vehículo en movimiento más cercano (hasta 70 m): tono grave cuya frecuencia sube con la velocidad, más grave en vehículos grandes, con paneo estéreo según de qué lado quede.
+- Pito intermitente de reversa cuando hay un montacargas moviéndose a menos de 26 m.
+Todo con transiciones suaves de volumen. Empieza al pulsar "Entrar a la planta" y se alterna con N o con el botón.
+
+
+16. CARGA, ARRANQUE Y ORDEN DE CONSTRUCCIÓN
+
+El mundo se construye por pasos cediendo el control al navegador entre uno y otro, para que la barra avance y la página no parezca congelada. Mensajes de estado, en orden:
+"Preparando el escenario…", "Modelando el terreno y el río…", "Levantando la planta industrial…", "Trazando los lotes de arroz…", "Sembrando árboles y palmas…", "Parqueando vehículos…", "Instalando máquinas y detalles…", "Poniendo en marcha camiones y cosechadoras…", "Llegando el personal del turno…", "Optimizando geometría…", "Compilando materiales…".
+Después: "Escenario listo · descargando texturas y modelos reales NN%" y, al terminar, "Escenario listo · N recursos reales cargados".
+
+Antes de habilitar el botón de entrada, precompila los shaders de la escena para que el primer cuadro no se trabe. El bucle principal limita el paso de tiempo a 0,05 s y en cada cuadro actualiza, en este orden: jugador o recorrido guiado, vehículos, talanqueras, personas, animaciones sueltas, partículas, pasto, agua y sombra del sol; la interfaz y el sonido se actualizan cuatro veces por segundo.
+
+Orden recomendado para escribir el archivo (y para partirlo si no cabe en una respuesta):
+ 1. HTML, CSS e interfaz.
+ 2. Configuración, calidades, renderer, cámara, utilidades matemáticas y ruido.
+ 3. Carga de recursos, texturas de respaldo y materiales.
+ 4. Lote de geometría estática, primitivas, letreros y colisiones.
+ 5. Luces, cielo, HDRI y terreno.
+ 6. Piezas reutilizables de edificio y de planta.
+ 7. Distribución de la planta e interiores del molino y del empaque.
+ 8. Oclusión falsa y objetos cotidianos.
+ 9. Cultivos, pasto y arroz instanciados.
+10. Árboles, palmas y ganado.
+11. Personas.
+12. Vehículos, sistema de rutas, partículas, banderas, bandas y talanqueras.
+13. Rutas de vehículos, vehículos estacionados y ubicación de las personas.
+14. Aves, detalles animados, jugador, recorrido guiado, minimapa, sonido y bucle principal.
+
+
+17. CÓMO SABER QUE QUEDÓ BIEN
+
+Antes de entregar, revisa el código contra esta lista:
+- El archivo abre sin errores en la consola en un Chrome o Edge reciente.
+- Sin conexión a los servidores de texturas y modelos el mundo se ve completo, con las texturas de respaldo.
+- Se puede ir caminando desde la portería oeste hasta el punto de venta pasando por recepción, secado, silos, el interior del molino, el empaque, la bodega y los muelles, sin atravesar muros y entrando por las puertas.
+- Una volqueta completa el ciclo campo → báscula → calador → descargue → báscula de salida → campo, y las siguientes hacen cola detrás sin atravesarse.
+- Un furgón entra, retrocede a su muelle, abre puertas, espera y sale.
+- Las cosechadoras dejan rastrojo por donde pasan y el lote se restablece al terminar.
+- Dentro del molino y del empaque hay operarios en sus puestos y las máquinas tienen movimiento.
+- El recorrido guiado pasa por las 15 paradas con sus textos, entra al molino por el portón y termina en modo dron.
+- El minimapa, la lista "Ir a zona", el reloj y el panel de zona responden.
+- Las tres calidades se pueden cambiar en caliente.
+- En un celular se puede mover la cámara y caminar con los dedos.
+- Todos los textos visibles están en español y con sus tildes.
