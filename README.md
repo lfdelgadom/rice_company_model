@@ -1,1 +1,1 @@
-# rice_copany_model
+# rice_company_model
