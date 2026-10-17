@@ -165,14 +165,6 @@ La empresa *Arrocera Sabana Dorada* es **ficticia** y se creó con fines educati
 
 ---
 
-## 👤 Autor
-
-**Luis Fernando Delgado Muñoz**
-Universidad de San Buenaventura Cali
-📧 lfdelgadom@usbcali.edu.co
-
----
-
 ## 📄 Licencia
 
 <!-- Elige la licencia que prefieras; MIT es una opción común para material educativo -->
